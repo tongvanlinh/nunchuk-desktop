@@ -223,7 +223,7 @@ jobs:
       - name: Create desktop and AppRun files
         working-directory: ${{ github.workspace }}/nunchuk-linux-v${{ env.LATEST_VERSION }}
         env:
-          NUNCHUK_LOGO: ${{ github.workspace }}/nunchuk-qt.png
+          NUNCHUK_LOGO: ${{ github.workspace }}/deploy/nunchuk-qt.png
         run: |
           echo "Current dir: $(pwd)"
           echo "Listing ../:"
