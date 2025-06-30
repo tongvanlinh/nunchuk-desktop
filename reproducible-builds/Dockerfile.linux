@@ -12,7 +12,7 @@ RUN apt update && apt upgrade -y && \
         sqlite3 libsqlite3-dev libsecret-1-dev \
         git dpkg-dev python3-pip wget unzip curl patchelf \
         fuse libgl-dev libglu-dev mesa-common-dev \
-        libpulse-dev libxcb-xinerama0 software-properties-common
+        libpulse-dev libxcb-xinerama0 software-properties-common p7zip-full
 
 # Install GCC 14
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
