@@ -222,6 +222,8 @@ jobs:
 
       - name: Create desktop and AppRun files
         working-directory: ${{ github.workspace }}/nunchuk-linux-v${{ env.LATEST_VERSION }}
+        env:
+          NUNCHUK_LOGO: ${{ github.workspace }}/nunchuk-qt.png
         run: |
           cat <<EOF > Appdir/nunchuk.desktop
           [Desktop Entry]
@@ -231,8 +233,8 @@ jobs:
           Icon=nunchuk-qt
           Categories=Utility;
           EOF
-
-          cp -L ../nunchuk-qt.png Appdir
+          ls -l ${{ github.workspace }}
+          cp -L "$NUNCHUK_LOGO" Appdir
 
           cat <<'EOF' > Appdir/AppRun
           #!/bin/bash
