@@ -108,6 +108,22 @@ jobs:
           make -j$(nproc)
           make install_dev
 
+      - name: Init and update submodules
+        run: |
+          git fetch --all --tags --force
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          echo "Latest commit ----->>>>> $(git rev-parse HEAD)"
+          echo "LAST_COMMITID=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          
+          # Get the latest tag based on the time it was tagged (taggerdate)
+          LATEST_TAG=$(git for-each-ref --sort=-taggerdate --format '%(refname:short)' refs/tags | head -n 1)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          TAGGED_COMMIT=$(git rev-list -n 1 $LATEST_TAG)
+          echo "Latest tag found: $LATEST_TAG (commit $TAGGED_COMMIT)"
+          echo "Current commit: $CURRENT_COMMIT"
+          echo "LATEST_VERSION=$LATEST_TAG" >> $GITHUB_ENV
+
       - name: Generate build info
         working-directory: ${{ github.workspace }}
         run: |
