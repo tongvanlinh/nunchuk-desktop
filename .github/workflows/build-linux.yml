@@ -232,7 +232,7 @@ jobs:
           Categories=Utility;
           EOF
 
-          cp -L ../../nunchuk-qt.png Appdir
+          cp -L ../nunchuk-qt.png Appdir
 
           cat <<'EOF' > Appdir/AppRun
           #!/bin/bash
