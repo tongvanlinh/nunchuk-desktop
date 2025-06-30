@@ -195,17 +195,16 @@ jobs:
           mkdir -p "$OUTPUT_DIR/lib"
 
           echo "ldd "$BIN" | awk '{print $3}' "
-          ldd "$BIN" | awk '{print $3}' 
+          ldd "$BIN" | awk '{print $3}' | grep -v '^(' | while read lib; do
+            echo "DEBUG: lib=[$lib]"
+            if [[ -n "$lib" && "$lib" != *"/libQt"* && "$lib" != *"/Qt"* ]]; then
+              echo "copying $lib"
+              cp -L "$lib" "$OUTPUT_DIR/lib/"
+              chmod 775 "$OUTPUT_DIR/lib/$(basename "$lib")"
+            fi
+          done
 
-          #ldd "$BIN" | awk '{print $3}' | grep -v '^(' | while read lib; do
-          #  if [[ "$lib" != *"/libQt"* && "$lib" != *"/Qt"* ]]; then
-          #    echo "copying $lib"
-          #    cp -L "$lib" "$OUTPUT_DIR/lib/"
-          #    chmod 775 "$OUTPUT_DIR/lib/$(basename "$lib")"
-          #  fi
-          #done
-
-          for lib_ssl in "${{ runner.temp }}/openssl-1.1.1g/lib/lib"/libssl.so* libcrypto.so*; do
+          for lib_ssl in "${{ runner.temp }}/openssl-1.1.1g/lib/lib"/libssl.so* "${{ runner.temp }}/openssl-1.1.1g/lib/lib"/libcrypto.so*; do
             echo "copying $lib_ssl"
             cp -L "$lib_ssl" "$OUTPUT_DIR/lib/"
             chmod 775 "$OUTPUT_DIR/lib/$(basename "$lib_ssl")"
