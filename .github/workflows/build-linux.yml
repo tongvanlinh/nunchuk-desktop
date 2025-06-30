@@ -260,7 +260,7 @@ jobs:
       - name: Create AppImage
         working-directory: ${{ github.workspace }}/nunchuk-linux-v${{ env.LATEST_VERSION }}
         run: |
-          "$GITHUB_WORKSPACE/appimagetool-x86_64.AppImage" Appdir "nunchuk-linux-v${{ env.LATEST_VERSION }}.AppImage"
+          ARCH=x86_64 "$GITHUB_WORKSPACE/appimagetool-x86_64.AppImage" Appdir "nunchuk-linux-v${{ env.LATEST_VERSION }}.AppImage"
           mv "nunchuk-linux-v${{ env.LATEST_VERSION }}.AppImage" "${{ github.workspace }}/"
 
       - name: Zip release folder
