@@ -225,6 +225,12 @@ jobs:
         env:
           NUNCHUK_LOGO: ${{ github.workspace }}/nunchuk-qt.png
         run: |
+          echo "Current dir: $(pwd)"
+          echo "Listing ../:"
+          ls -l ../
+          echo "Listing root:"
+          ls -l ${{ github.workspace }}
+          
           cat <<EOF > Appdir/nunchuk.desktop
           [Desktop Entry]
           Type=Application
