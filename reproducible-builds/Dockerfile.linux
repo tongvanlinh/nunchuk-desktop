@@ -24,7 +24,7 @@ ENV CC=gcc-14
 ENV CXX=g++-14
 
 # Install aqtinstall and Qt
-RUN pip3 install aqtinstall && \
+RUN pip3 install --break-system-packages aqtinstall && \
     aqt install-qt linux desktop $QT_VERSION gcc_64 --outputdir "$QT_INSTALL_DIR" && \
     aqt install-qt linux desktop $QT_VERSION gcc_64 --outputdir "$QT_INSTALL_DIR" \
         --modules qtcharts qtdatavis3d qtlottie qtnetworkauth qtpurchasing qtquick3d \
