@@ -13,7 +13,8 @@ cqtdeployer -bin "$EXEC" \
     -qmlDir . \
     -targetDir "$OUTDIR" \
     -icon "nunchuk-qt.png" \
-    noTranslation noStrip
+    --no-translation \
+    --no-strip
 
 # Bundle libs
 mkdir -p "$OUTDIR/lib"
