@@ -118,7 +118,6 @@ jobs:
           echo "Latest commit ----->>>>> $(git rev-parse HEAD)"
           echo "LAST_COMMITID=$(git rev-parse HEAD)" >> $GITHUB_ENV
       
-          # Lấy tag mới nhất theo thời gian tag (nếu có)
           LATEST_TAG=$(git for-each-ref --sort=-taggerdate --format '%(refname:short)' refs/tags | head -n 1 || echo "")
           
           if [ -z "$LATEST_TAG" ]; then
@@ -132,7 +131,6 @@ jobs:
           echo "Latest tag found: $LATEST_TAG (commit $TAGGED_COMMIT)"
           echo "Current commit: $CURRENT_COMMIT"
           echo "LATEST_VERSION=$LATEST_TAG" >> $GITHUB_ENV
-
 
       - name: Generate build info
         working-directory: ${{ github.workspace }}
@@ -183,10 +181,6 @@ jobs:
                       -icon "$NUNCHUK_LOGO" \
                       noTranslation noStrip
 
-          echo "Current dir $PWD"
-          echo "ls -l $PWD"
-          ls -l $PWD
-
       - name: Copy extra libraries
         working-directory: ${{ github.workspace }}
         run: |
@@ -225,12 +219,6 @@ jobs:
         env:
           NUNCHUK_LOGO: ${{ github.workspace }}/deploy/nunchuk-qt.png
         run: |
-          echo "Current dir: $(pwd)"
-          echo "Listing ../:"
-          ls -l ../
-          echo "Listing root:"
-          ls -l ${{ github.workspace }}
-          
           cat <<EOF > Appdir/nunchuk.desktop
           [Desktop Entry]
           Type=Application
@@ -271,11 +259,5 @@ jobs:
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: nunchuk-linux-v${{ env.LATEST_VERSION }}_${{ env.BUILD_BRANCH }}_${{ env.TIMESTAMP }}
+          name: nunchuk-linux-v${{ env.LATEST_VERSION }}
           path: "${{ github.workspace }}/nunchuk-linux-v${{ env.LATEST_VERSION }}.AppImage"
-
-      - name: Upload ZIP folder
-        uses: actions/upload-artifact@v4
-        with:
-          name: nunchuk-linux-built
-          path: "${{ github.workspace }}/nunchuk-linux-v${{ env.LATEST_VERSION }}.zip"
