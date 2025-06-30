@@ -14,11 +14,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download logo
-        working-directory: ${{ github.workspace }}
-        run: |
-          curl -L -o nunchuk-qt.png https://raw.githubusercontent.com/hadvluffy/macdeploynunchuk/main/nunchuk-qt.png
-
       - name: Install dependencies
         run: |
           sudo apt update
