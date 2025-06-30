@@ -172,7 +172,7 @@ jobs:
         env:
           NUNCHUK_LOGO: ${{ github.workspace }}/nunchuk-qt.png
         run: |
-          OUTPUT_DIR="${{ runner.temp }}/nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
+          OUTPUT_DIR="nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
           EXEC="$PWD/build/nunchuk-qt"
           mkdir -p "$OUTPUT_DIR"
 
@@ -183,9 +183,13 @@ jobs:
                       -icon "$NUNCHUK_LOGO" \
                       noTranslation noStrip
 
+          echo "Current dir $PWD"
+          echo "ls -l $PWD"
+
       - name: Copy extra libraries
+        working-directory: ${{ github.workspace }}
         run: |
-          OUTPUT_DIR="${{ runner.temp }}/nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
+          OUTPUT_DIR="nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
           BIN="$OUTPUT_DIR/bin/nunchuk-qt"
           mkdir -p "$OUTPUT_DIR/lib"
 
