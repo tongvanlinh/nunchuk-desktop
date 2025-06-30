@@ -109,9 +109,8 @@ jobs:
           make install_dev
 
       - name: Init and update submodules
+        timeout-minutes: 60
         run: |
-          (while true; do echo "🏗️ Building... still running..."; sleep 60; done) &
-          KEEP_ALIVE_PID=$!
           git fetch --all --tags --force
           git submodule sync --recursive
           git submodule update --init --recursive
@@ -137,6 +136,7 @@ jobs:
 
       - name: Configure and build project
         working-directory: ${{ github.workspace }}
+        timeout-minutes: 60
         env:
           OPENSSL_ROOT_DIR: ${{ runner.temp }}/openssl-1.1.1g/lib
           OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
