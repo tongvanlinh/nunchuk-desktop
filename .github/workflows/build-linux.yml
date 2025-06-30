@@ -172,16 +172,16 @@ jobs:
         env:
           NUNCHUK_LOGO: ${{ github.workspace }}/nunchuk-qt.png
         run: |
-          OUTPUT_DIR="nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
+          OUTPUT_DIR="${{ runner.temp }}/nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
           EXEC="$PWD/build/nunchuk-qt"
           mkdir -p "$OUTPUT_DIR"
 
           cqtdeployer -bin "$EXEC" \
-              -qmake "${{ env.QT_INSTALLED_PREFIX }}/bin/qmake" \
-              -qmlDir $PWD \
-              -targetDir "$OUTPUT_DIR" \
-              -icon "$NUNCHUK_LOGO" \
-              noTranslation noStrip
+                      -qmake "${{ env.QT_INSTALLED_PREFIX }}/bin/qmake" \
+                      -qmlDir $PWD \
+                      -targetDir "$OUTPUT_DIR" \
+                      -icon "$NUNCHUK_LOGO" \
+                      noTranslation noStrip
 
       - name: Copy extra libraries
         run: |
