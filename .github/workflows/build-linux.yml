@@ -110,6 +110,8 @@ jobs:
 
       - name: Init and update submodules
         run: |
+          (while true; do echo "🏗️ Building... still running..."; sleep 60; done) &
+          KEEP_ALIVE_PID=$!
           git fetch --all --tags --force
           git submodule sync --recursive
           git submodule update --init --recursive
