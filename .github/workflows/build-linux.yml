@@ -185,7 +185,7 @@ jobs:
 
       - name: Copy extra libraries
         run: |
-          OUTPUT_DIR="nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
+          OUTPUT_DIR="${{ runner.temp }}/nunchuk-linux-v${{ env.LATEST_VERSION }}/Appdir"
           BIN="$OUTPUT_DIR/bin/nunchuk-qt"
           mkdir -p "$OUTPUT_DIR/lib"
 
