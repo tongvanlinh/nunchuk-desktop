@@ -21,9 +21,16 @@ cqtdeployer -bin "build/nunchuk-qt" \
 # Bundle libs
 mkdir -p "$OUTDIR/lib"
 BIN="$OUTDIR/bin/nunchuk-qt"
-ldd "$BIN" | awk '{print $3}' | grep -v '^(' | while read lib; do
-    [[ -n "$lib" && "$lib" != *"/libQt"* ]] && cp -L "$lib" "$OUTDIR/lib/"
-done
+while IFS= read -r line; do
+    if [[ "$line" == *"not found"* ]]; then
+        echo "Missing library: $line"
+    else
+        lib=$(echo "$line" | awk '{print $3}')
+        if [[ "$lib" == /* ]]; then
+            cp -L "$lib" "$OUTDIR/lib/"
+        fi
+    fi
+done < <(ldd "$BIN")
 
 # OpenSSL libraries
 cp -L $OPENSSL_ROOT_DIR/lib/libssl.so* $OUTDIR/lib/
