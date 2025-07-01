@@ -6,15 +6,10 @@ TAG=$(git describe --tags --abbrev=0 || echo "0.0.0")
 OUTDIR=nunchuk-linux-v${TAG}/Appdir
 mkdir -p "$OUTDIR"
 
+set -x
 # Deploy with CQtDeployer
 EXEC="build/nunchuk-qt"
-cqtdeployer -bin "$EXEC" \
-    -qmake "$QT_INSTALLED_PREFIX/bin/qmake" \
-    -qmlDir . \
-    -targetDir "$OUTDIR" \
-    -icon "nunchuk-qt.png" \
-    noTranslation \
-    noStrip
+cqtdeployer -bin "$EXEC" -qmake "$QT_INSTALLED_PREFIX/bin/qmake" -qmlDir . -targetDir "$OUTDIR" -icon "nunchuk-qt.png" noTranslation noStrip
 
 # Bundle libs
 mkdir -p "$OUTDIR/lib"
