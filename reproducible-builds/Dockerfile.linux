@@ -11,11 +11,13 @@ RUN apt update && apt upgrade -y && \
         libboost-all-dev libzmq3-dev libevent-dev libdb++-dev \
         sqlite3 libsqlite3-dev libsecret-1-dev \
         git dpkg-dev python3-pip wget unzip curl patchelf \
+        fuse libfuse2 fuse3 libgl-dev libglu-dev mesa-common-dev \
+        libpulse-dev libxcb-xinerama0 software-properties-common
+        libboost-all-dev libzmq3-dev libevent-dev libdb++-dev \
+        sqlite3 libsqlite3-dev libsecret-1-dev \
+        git dpkg-dev python3-pip wget unzip curl patchelf \
         fuse libgl-dev libglu-dev mesa-common-dev \
-        libpulse-dev libxcb-xinerama0 software-properties-common p7zip-full \
-        libnss3-dev libasound2-dev libxrandr-dev libxcomposite-dev libxcursor-dev \
-        libxi-dev libxdamage-dev libxtst-dev libxss-dev libx11-xcb-dev \
-        libxt-dev libdbus-1-dev libglu1-mesa-dev libegl1-mesa-dev
+        libpulse-dev libxcb-xinerama0 software-properties-common
 
 # Install GCC 14
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
