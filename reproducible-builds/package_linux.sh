@@ -9,7 +9,14 @@ mkdir -p "$OUTDIR"
 set -x
 # Deploy with CQtDeployer
 EXEC="build/nunchuk-qt"
-cqtdeployer -bin "$EXEC" -qmake "$QT_INSTALLED_PREFIX/bin/qmake" -qmlDir . -targetDir "$OUTDIR" -icon "nunchuk-qt.png" noTranslation noStrip
+ICON_PATH="/project/deploy/nunchuk-qt.png"
+cqtdeployer -bin "build/nunchuk-qt" \
+            -qmake "$QT_INSTALLED_PREFIX/bin/qmake" \
+            -qmlDir . \
+            -targetDir "$OUTDIR" \
+            -icon "$ICON_PATH" \
+            noTranslation \
+            noStrip
 
 # Bundle libs
 mkdir -p "$OUTDIR/lib"
