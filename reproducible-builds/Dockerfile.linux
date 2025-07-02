@@ -9,32 +9,28 @@ ENV QT_INSTALLED_PREFIX=$QT_INSTALL_DIR/$QT_VERSION/gcc_64
 ARG TAG
 RUN echo "Building version $TAG"
 
-# Update apt
-RUN apt update -y
-
 # Install core dependencies (build tools and basic libs)
-RUN apt install -y \
+RUN apt update && apt install -y \
         cmake g++ make ninja-build \
         libboost-all-dev libzmq3-dev libevent-dev libdb++-dev \
         sqlite3 libsqlite3-dev libsecret-1-dev \
         git dpkg-dev python3-pip wget unzip curl patchelf p7zip-full \
-        libgl1-mesa-dev libglu1-mesa-dev \
-        git dpkg-dev python3-pip wget unzip curl patchelf p7zip-full
+        libgl1-mesa-dev
 
 # Install system libraries, FUSE, and squashfuse for AppImage support
-RUN apt install -y \
+RUN apt update && apt install -y \
         fuse libfuse2 squashfuse squashfuse-tools \
-        libgl-dev mesa-common-dev libglu1-mesa-dev \
+        mesa-common-dev libglu1-mesa-dev \
         libpulse-dev libxcb-xinerama0 software-properties-common \
         libnss3-dev libasound2-dev libxrandr-dev libxcomposite-dev \
         libxcursor-dev libxi-dev libxdamage-dev libxtst-dev libxss-dev \
         libx11-xcb-dev libxt-dev libdbus-1-dev libegl1-mesa-dev
 
 # Install GCC 14
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y
-RUN apt install -y gcc-14 g++-14
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+RUN add-apt-repository ppa:ubuntu-toolchain-r/ppa -y && \
+    apt update && apt install -y gcc-14 g++-14 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
 ENV CC=gcc-14
 ENV CXX=g++-14
