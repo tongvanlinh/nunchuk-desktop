@@ -24,10 +24,11 @@ jobs:
           else
             echo "TAG=0.0.0" >> $GITHUB_ENV
           fi
-          echo "TAG found: ${{ env.TAG }}"
           
       - name: Build Docker image
         run: |
+          echo "TAG found: ${{ env.TAG }}"
+          
           docker build --no-cache \
             --build-arg TAG=${{ env.TAG }} \
             -f reproducible-builds/Dockerfile.linux \
