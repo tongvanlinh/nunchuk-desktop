@@ -19,7 +19,7 @@ RUN apt update && apt install -y \
 
 # Install system libraries, FUSE, and squashfuse for AppImage support
 RUN apt update && apt install -y \
-        fuse libfuse2 squashfuse squashfuse-tools \
+        fuse libfuse2 squashfuse \
         mesa-common-dev libglu1-mesa-dev \
         libpulse-dev libxcb-xinerama0 software-properties-common \
         libnss3-dev libasound2-dev libxrandr-dev libxcomposite-dev \
