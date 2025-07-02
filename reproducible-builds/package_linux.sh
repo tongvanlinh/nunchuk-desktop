@@ -66,4 +66,4 @@ chmod +x $OUTDIR/AppRun
 
 # Create AppImage
 cd nunchuk-linux-v${TAG}
-appimagetool --appimage-extract-and-run Appdir "nunchuk-linux-v${TAG}.AppImage"
+ARCH=x86_64 appimagetool --appimage-extract-and-run Appdir "nunchuk-linux-v${TAG}.AppImage"
