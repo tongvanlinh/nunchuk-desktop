@@ -28,10 +28,10 @@ RUN apt install -y \
         libx11-xcb-dev libxt-dev libdbus-1-dev libegl1-mesa-dev
 
 # Install GCC 14
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
-    apt update && apt install -y gcc-14 g++-14 && \
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 && \
-    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test -y
+RUN apt install -y gcc-14 g++-14
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
 ENV CC=gcc-14
 ENV CXX=g++-14
