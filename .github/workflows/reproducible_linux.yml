@@ -19,12 +19,17 @@ jobs:
 
       - name: Determine Git tag
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          else
-            echo "TAG=0.0.0" >> $GITHUB_ENV
-          fi
-          echo "TAG found ${{ env.TAG }}"
+          git fetch --all --tags --force
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          echo "LAST_COMMITID=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          # Get the latest tag based on the time it was tagged (taggerdate)
+          LATEST_TAG=$(git for-each-ref --sort=-taggerdate --format '%(refname:short)' refs/tags | head -n 1)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          TAGGED_COMMIT=$(git rev-list -n 1 $LATEST_TAG)
+          echo "Latest tag found: $LATEST_TAG (commit $TAGGED_COMMIT)"
+          echo "Current commit: $CURRENT_COMMIT"
+          echo "LATEST_VERSION=$LATEST_TAG" >> $GITHUB_ENV
 
       - name: Build Docker image
         run: |
