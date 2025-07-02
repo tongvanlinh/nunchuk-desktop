@@ -24,6 +24,7 @@ jobs:
           else
             echo "TAG=0.0.0" >> $GITHUB_ENV
           fi
+          echo "TAG found ${{ env.TAG }}"
 
       - name: Build Docker image
         run: |
