@@ -58,9 +58,9 @@ cp -L "deploy/nunchuk-qt.png" "$OUTDIR"
 
 cat <<'EOF' > $OUTDIR/AppRun
 #!/bin/bash
-HERE="$(dirname "$(readlink -f "\$0")")"
+HERE="$(dirname "$(readlink -f "$0")")"
 export QTWEBENGINE_DISABLE_SANDBOX=1
-exec "\$HERE/nunchuk-qt.sh" "\$@"
+exec "$HERE/nunchuk-qt.sh" "$@"
 EOF
 chmod +x $OUTDIR/AppRun
 
