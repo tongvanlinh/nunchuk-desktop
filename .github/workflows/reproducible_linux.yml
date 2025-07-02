@@ -18,8 +18,12 @@ jobs:
           submodules: recursive
 
       - name: Determine Git tag
-        id: vars
-        run: echo "TAG=$(git describe --tags --abbrev=0 || echo '0.0.0')" >> $GITHUB_ENV
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          else
+            echo "TAG=0.0.0" >> $GITHUB_ENV
+          fi
 
       - name: Build Docker image
         run: |
