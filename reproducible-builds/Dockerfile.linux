@@ -6,6 +6,9 @@ ENV QT_INSTALL_DIR=/opt/Qt
 ENV QT5_DIR=$QT_INSTALL_DIR/$QT_VERSION/gcc_64/lib/cmake/Qt5
 ENV QT_INSTALLED_PREFIX=$QT_INSTALL_DIR/$QT_VERSION/gcc_64
 
+ARG TAG
+RUN echo "Building version $TAG"
+
 # Update apt
 RUN apt update -y
 
