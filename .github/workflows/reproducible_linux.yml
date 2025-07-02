@@ -23,7 +23,8 @@ jobs:
 
       - name: Run reproducible build inside Docker
         run: |
-          docker run --rm -v ${{ github.workspace }}:/project nunchuk-repro
+          docker run --rm -e TAG=${{ env.TAG }} -v ${{ github.workspace }}:/project nunchuk-repro
+
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
