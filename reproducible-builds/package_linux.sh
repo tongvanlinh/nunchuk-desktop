@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Determine version tag
-TAG=$(git describe --tags --abbrev=0 || echo "0.0.0")
+TAG=${TAG:-0.0.0}
 OUTDIR=nunchuk-linux-v${TAG}/Appdir
 mkdir -p "$OUTDIR"
 
