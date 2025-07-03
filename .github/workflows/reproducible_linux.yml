@@ -10,6 +10,7 @@ jobs:
   build-linux-repro:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    environment: Google
 
     steps:
       - name: Checkout repository
@@ -36,7 +37,13 @@ jobs:
 
       - name: Run reproducible build inside Docker
         run: |
-          docker run --rm -v ${{ github.workspace }}:/project nunchuk-repro
+          docker run --rm \
+            -e TAG=${{ env.TAG }} \
+            -e OAUTH_CLIENT_SECRET=${{ secrets.OAUTH_CLIENT_SECRET }} \
+            -e OAUTH_REDIRECT_URI=${{ secrets.OAUTH_REDIRECT_URI }} \
+            -e OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }} \
+            -v ${{ github.workspace }}:/project \
+            nunchuk-repro
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
