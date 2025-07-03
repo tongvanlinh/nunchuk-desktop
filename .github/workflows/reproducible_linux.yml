@@ -41,5 +41,5 @@ jobs:
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nunchuk-linux-${{ env.TAG }}
+          name: nunchuk-linux-v${{ env.TAG }}
           path: nunchuk-linux-v*/nunchuk-linux-*.AppImage
