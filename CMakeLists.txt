@@ -1,25 +1,44 @@
-if(WIN32)
-    cmake_minimum_required( VERSION 3.1 )
-else()
-    cmake_minimum_required( VERSION 3.16 )
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
-        set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-    endif()
+cmake_minimum_required( VERSION 3.16 )
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.25")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+endif()
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
 endif()
 
+set(NUNCHUK_VERSION "2.6.6" CACHE STRING "Nunchuk application version")
 if(UNIX AND APPLE)
-    project(Nunchuk VERSION 2.6.6)
+    project(Nunchuk VERSION ${NUNCHUK_VERSION})
 else()
-    project(nunchuk-qt VERSION 2.6.6)
+    project(nunchuk-qt VERSION ${NUNCHUK_VERSION})
 endif()
+
+# Keep desktop Release builds at the same balanced optimization level on all
+# supported platforms. This also replaces CMake's Unix/macOS -O3 default and
+# prevents release binaries from accidentally inheriting -O0 from CI.
+if(WIN32 AND MSVC)
+    set(CMAKE_C_FLAGS_RELEASE "/O2 /DNDEBUG" CACHE STRING
+        "C flags used by the Release configuration" FORCE)
+    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG" CACHE STRING
+        "C++ flags used by the Release configuration" FORCE)
+elseif(((APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID)) AND
+       (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"))
+    set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING
+        "C flags used by the Release configuration" FORCE)
+    set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING
+        "C++ flags used by the Release configuration" FORCE)
+endif()
+message(STATUS "Release C optimization flags: ${CMAKE_C_FLAGS_RELEASE}")
+message(STATUS "Release C++ optimization flags: ${CMAKE_CXX_FLAGS_RELEASE}")
 
 
 # nunchuk
 if(MSVC AND WIN32)
-    set(CMAKE_CXX_FLAGS_RELEASE "/MT")
-    set(CMAKE_CXX_FLAGS_DEBUG "/MTd")
+    # Official Qt binaries use the dynamic MSVC CRT. Keep the full dependency
+    # graph on /MD to avoid mixing incompatible CRT heaps across DLL boundaries.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     set(VCPKG_TARGET_ARCHITECTURE x64)
-    set(VCPKG_CRT_LINKAGE static)
+    set(VCPKG_CRT_LINKAGE dynamic)
     set(VCPKG_LIBRARY_LINKAGE static)
     set(VCPKG_BUILD_TYPE Release)
     set(Boost_USE_STATIC_LIBS OFF)
@@ -33,6 +52,26 @@ if (WIN32)
     add_definitions("-DBOOST_PROCESS_USE_STD_FS")
 endif()
 add_subdirectory(contrib/libnunchuk)
+
+# libnunchuk historically forces /MT and suppresses MSVCRT. Official Qt builds
+# use the dynamic CRT, so normalize that imported target from the parent project
+# without requiring a release-specific commit in the libnunchuk submodule.
+if(MSVC AND TARGET nunchuk)
+    foreach(property_name
+            COMPILE_OPTIONS
+            INTERFACE_COMPILE_OPTIONS
+            LINK_OPTIONS
+            INTERFACE_LINK_OPTIONS)
+        get_property(property_value TARGET nunchuk PROPERTY ${property_name})
+        if(property_value)
+            list(FILTER property_value EXCLUDE REGEX "^/MTd?$")
+            list(FILTER property_value EXCLUDE REGEX "^/NODEFAULTLIB:MSVCRT$")
+            set_property(TARGET nunchuk PROPERTY ${property_name} "${property_value}")
+        endif()
+    endforeach()
+    set_property(TARGET nunchuk PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
 
 # Compiler Opt
 set(CMAKE_CXX_STANDARD 20)
@@ -227,11 +266,6 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
 else()
     message(STATUS "---------------------------------> GCC and either")
     target_compile_options(${PROJECT_NAME} PUBLIC -std=c++20 -fno-extended-identifiers -fstack-reuse=none)
-endif()
-
-# Target link options
-if(WIN32 AND MSVC)
-    target_link_options(${PROJECT_NAME} PUBLIC /INCREMENTAL:NO /NODEFAULTLIB:MSVCRT)
 endif()
 
 # Target link libraries

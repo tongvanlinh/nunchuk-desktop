@@ -1,12 +1,298 @@
-name: Build macos release
+name: Build macOS release
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('{0}_manual', inputs.version) || github.ref_name }}
 
 on:
+  push:
+    tags: [ "*" ]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Package version used for a manual build
+        required: false
+        default: 0.0.0
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: macos-13
+    name: Build macOS x86_64
+    runs-on: macos-15-intel
+    env:
+      BUILD_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version || '0.0.0' }}
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
 
     steps:
-      - name: Checkout
+      - name: Configure Git for private GitLab submodules
+        env:
+          GITLAB_PAT: ${{ secrets.GITLAB_PAT }}
+        run: |
+          git config --global \
+            url."https://oauth2:${GITLAB_PAT}@gitlab.com/".insteadOf \
+            "https://gitlab.com/"
+
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate build version and host
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${BUILD_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$ ]]; then
+            echo "Invalid build version: ${BUILD_VERSION}"
+            exit 1
+          fi
+          test "$(uname -m)" = x86_64
+          xcode-select -p
+          xcodebuild -version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Qt 5.15.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: mac
+          arch: clang_64
+          modules: 'qtnetworkauth qtwebengine'
+          cache: true
+
+      - name: Configure Qt path
+        shell: bash
+        run: |
+          set -euo pipefail
+          qt_path="${GITHUB_WORKSPACE}/Qt/5.15.2/clang_64"
+          test -x "${qt_path}/bin/macdeployqt"
+          test -d "${qt_path}/lib/QtNetworkAuth.framework"
+          test -d "${qt_path}/lib/QtWebEngineCore.framework"
+          echo "QTPATH=${qt_path}" >> "${GITHUB_ENV}"
+          echo "${qt_path}/bin" >> "${GITHUB_PATH}"
+
+      - name: Build and deploy application
+        shell: bash
+        run: bash reproducible-builds/build_macos.sh
+
+      - name: Validate Apple signing configuration
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.PROD_MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.PROD_MACOS_CERTIFICATE_PWD }}
+          MACOS_CERTIFICATE_NAME: ${{ secrets.PROD_MACOS_CERTIFICATE_NAME }}
+          MACOS_CI_KEYCHAIN_PWD: ${{ secrets.PROD_MACOS_CI_KEYCHAIN_PWD }}
+          NOTARIZATION_APPLE_ID: ${{ secrets.IO_APPLE_ID }}
+          NOTARIZATION_TEAM_ID: ${{ secrets.IO_APPLE_TEAM_ID }}
+          NOTARIZATION_PWD: ${{ secrets.IO_APPLE_APP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable_name in \
+            MACOS_CERTIFICATE \
+            MACOS_CERTIFICATE_PWD \
+            MACOS_CERTIFICATE_NAME \
+            MACOS_CI_KEYCHAIN_PWD \
+            NOTARIZATION_APPLE_ID \
+            NOTARIZATION_TEAM_ID \
+            NOTARIZATION_PWD; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "Required macOS signing secret is missing: ${variable_name}"
+              exit 1
+            fi
+          done
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.PROD_MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.PROD_MACOS_CERTIFICATE_PWD }}
+          MACOS_CI_KEYCHAIN_PWD: ${{ secrets.PROD_MACOS_CI_KEYCHAIN_PWD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          certificate_path="${RUNNER_TEMP}/nunchuk-certificate.p12"
+          keychain_path="${RUNNER_TEMP}/nunchuk-build.keychain-db"
+          printf '%s' "${MACOS_CERTIFICATE}" | base64 --decode > "${certificate_path}"
+          security create-keychain -p "${MACOS_CI_KEYCHAIN_PWD}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${MACOS_CI_KEYCHAIN_PWD}" "${keychain_path}"
+          security import "${certificate_path}" \
+            -k "${keychain_path}" \
+            -P "${MACOS_CERTIFICATE_PWD}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security list-keychains -d user -s "${keychain_path}"
+          security default-keychain -d user -s "${keychain_path}"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "${MACOS_CI_KEYCHAIN_PWD}" \
+            "${keychain_path}"
+          rm -f -- "${certificate_path}"
+
+      - name: Sign and verify application bundle
+        env:
+          MACOS_CERTIFICATE_NAME: ${{ secrets.PROD_MACOS_CERTIFICATE_NAME }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="${GITHUB_WORKSPACE}/build-reproducible-macos/Nunchuk.app"
+          entitlements="${GITHUB_WORKSPACE}/entitlements.plist"
+          helper_app="${app_path}/Contents/Frameworks/QtWebEngineCore.framework/Versions/5/Helpers/QtWebEngineProcess.app"
+          helper_executable="${helper_app}/Contents/MacOS/QtWebEngineProcess"
+          helper_entitlements="${helper_app}/Contents/Resources/QtWebEngineProcess.entitlements"
+
+          test -d "${app_path}"
+          test -f "${entitlements}"
+          test -d "${helper_app}"
+          test -x "${helper_executable}"
+          test -f "${helper_entitlements}"
+
+          while IFS= read -r binary; do
+            file -Lb "${binary}" | grep -q 'Mach-O' || continue
+            if [[ "${binary}" == "${helper_executable}" ]]; then
+              continue
+            fi
+            codesign --force \
+              --options runtime \
+              --timestamp \
+              --sign "${MACOS_CERTIFICATE_NAME}" \
+              "${binary}"
+          done < <(find "${app_path}/Contents" -type f -print)
+
+          codesign --force \
+            --options runtime \
+            --timestamp \
+            --entitlements "${helper_entitlements}" \
+            --sign "${MACOS_CERTIFICATE_NAME}" \
+            "${helper_executable}"
+
+          while IFS= read -r bundle; do
+            if [[ "${bundle}" == "${helper_app}" ]]; then
+              codesign --force \
+                --options runtime \
+                --timestamp \
+                --entitlements "${helper_entitlements}" \
+                --sign "${MACOS_CERTIFICATE_NAME}" \
+                "${bundle}"
+            else
+              codesign --force \
+                --options runtime \
+                --timestamp \
+                --sign "${MACOS_CERTIFICATE_NAME}" \
+                "${bundle}"
+            fi
+          done < <(find "${app_path}/Contents" -depth -type d \
+            \( -name '*.framework' -o -name '*.app' -o -name '*.bundle' \) -print)
+
+          codesign --force \
+            --options runtime \
+            --timestamp \
+            --entitlements "${entitlements}" \
+            --sign "${MACOS_CERTIFICATE_NAME}" \
+            "${app_path}"
+
+          codesign --verify --deep --strict --verbose=4 "${app_path}"
+          codesign --display --entitlements :- "${app_path}"
+
+      - name: Notarize and staple application
+        env:
+          NOTARIZATION_APPLE_ID: ${{ secrets.IO_APPLE_ID }}
+          NOTARIZATION_TEAM_ID: ${{ secrets.IO_APPLE_TEAM_ID }}
+          NOTARIZATION_PWD: ${{ secrets.IO_APPLE_APP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="${GITHUB_WORKSPACE}/build-reproducible-macos/Nunchuk.app"
+          submission="${RUNNER_TEMP}/nunchuk-notarization.zip"
+          ditto -c -k --keepParent "${app_path}" "${submission}"
+          xcrun notarytool submit "${submission}" \
+            --apple-id "${NOTARIZATION_APPLE_ID}" \
+            --team-id "${NOTARIZATION_TEAM_ID}" \
+            --password "${NOTARIZATION_PWD}" \
+            --wait
+          xcrun stapler staple "${app_path}"
+          xcrun stapler validate "${app_path}"
+          spctl --assess --type execute --verbose=4 "${app_path}"
+
+      - name: Create and notarize DMG
+        env:
+          NOTARIZATION_APPLE_ID: ${{ secrets.IO_APPLE_ID }}
+          NOTARIZATION_TEAM_ID: ${{ secrets.IO_APPLE_TEAM_ID }}
+          NOTARIZATION_PWD: ${{ secrets.IO_APPLE_APP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="${GITHUB_WORKSPACE}/build-reproducible-macos/Nunchuk.app"
+          image_root="${RUNNER_TEMP}/nunchuk-dmg-root"
+          dist_dir="${GITHUB_WORKSPACE}/dist"
+          dmg_path="${dist_dir}/nunchuk-macos-v${BUILD_VERSION}.dmg"
+
+          rm -rf -- "${image_root}" "${dist_dir}"
+          mkdir -p "${image_root}" "${dist_dir}"
+          ditto "${app_path}" "${image_root}/Nunchuk.app"
+          ln -s /Applications "${image_root}/Applications"
+          hdiutil create \
+            -volname Nunchuk \
+            -srcfolder "${image_root}" \
+            -ov \
+            -format UDZO \
+            "${dmg_path}"
+
+          xcrun notarytool submit "${dmg_path}" \
+            --apple-id "${NOTARIZATION_APPLE_ID}" \
+            --team-id "${NOTARIZATION_TEAM_ID}" \
+            --password "${NOTARIZATION_PWD}" \
+            --wait
+          xcrun stapler staple "${dmg_path}"
+          xcrun stapler validate "${dmg_path}"
+          hdiutil verify "${dmg_path}"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nunchuk-macos-v${{ env.BUILD_VERSION }}
+          path: dist/nunchuk-macos-v${{ env.BUILD_VERSION }}.dmg
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Create or update GitHub prerelease
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="dist/nunchuk-macos-v${BUILD_VERSION}.dmg"
+
+          for attempt in 1 2 3; do
+            if gh release view "${BUILD_VERSION}" >/dev/null 2>&1; then
+              break
+            fi
+            gh release create "${BUILD_VERSION}" \
+              --verify-tag \
+              --title "${BUILD_VERSION}" \
+              --notes-file reproducible-builds/release-notes.md \
+              --prerelease \
+              --latest=false || true
+            sleep 5
+          done
+          gh release view "${BUILD_VERSION}" >/dev/null
+          gh release edit "${BUILD_VERSION}" \
+            --title "${BUILD_VERSION}" \
+            --notes-file reproducible-builds/release-notes.md \
+            --draft=false \
+            --prerelease
+          gh release upload "${BUILD_VERSION}" "${artifact}" --clobber
+
+      - name: Clean signing keychain
+        if: always()
+        env:
+          MACOS_CI_KEYCHAIN_PWD: ${{ secrets.PROD_MACOS_CI_KEYCHAIN_PWD }}
+        shell: bash
+        run: |
+          keychain_path="${RUNNER_TEMP}/nunchuk-build.keychain-db"
+          if [[ -f "${keychain_path}" ]]; then
+            security delete-keychain "${keychain_path}" || true
+          fi

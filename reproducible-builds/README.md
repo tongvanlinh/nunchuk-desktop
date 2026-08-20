@@ -6,8 +6,8 @@ Easily verify that the binary you installed **really** comes from the open‑sou
 
 - **Linux x86‑64** — active
 - **Linux ARM64** — standby
-- **Windows** — standby
-- **macOS** — standby
+- **Windows x64** — active
+- **macOS x86‑64** — active
 
 ---
 
@@ -68,6 +68,8 @@ The Linux package includes
 verified with its pinned SHA-256 checksum during packaging.
 The deploy process also:
 
+- compiles Nunchuk Release code with `-O2` and verifies the generated compile
+  commands before packaging;
 - uses pinned, checksum-verified CQtDeployer, appimagetool, and AppImage runtime
   inputs;
 - bundles the Qt NetworkAuth, WebEngine, OpenSSL 1.1.1, NSS, CA certificate, and
@@ -81,9 +83,37 @@ The deploy process also:
   startup failures before publishing.
 
 The final output is `nunchuk-linux-v$VERSION/nunchuk-linux-v$VERSION.zip`.
-When a tag is pushed, the Linux workflow creates or updates the matching GitHub
-Release as a pre-release and uploads this ZIP. Manual builds do not publish a
-GitHub Release.
+
+### Windows x64
+
+The Windows workflow builds with MSVC and Qt 5.15.2 using the dynamic MSVC CRT
+required by the official Qt binaries. Release code is compiled with `/O2`, the
+MSVC equivalent of `-O2`, and checked from `compile_commands.json`. It deploys and verifies Qt NetworkAuth,
+Qt WebEngine, OpenSSL 1.1, HWI, QtKeychain, QML plugins, and the complete PE DLL
+dependency closure. It then smoke-tests a silent Inno Setup installation.
+
+Outputs:
+
+- `nunchuk-windows-v$VERSION-setup-unsigned.exe`
+- `nunchuk-windows-portable-v$VERSION.zip`
+
+The installer is intentionally labelled `unsigned` because the QA workflow used
+as the reference does not provide an Authenticode signing stage.
+
+### macOS x86‑64
+
+The macOS workflow targets macOS 13 or newer and builds an Intel application
+with Qt 5.15.2 using `-O2`. It verifies the generated compile commands, Mach-O
+architecture and dependency paths, bundles
+the pinned macOS HWI executable, deploys Qt NetworkAuth and Qt WebEngine, then
+signs and notarizes both `Nunchuk.app` and the final DMG.
+
+Output: `nunchuk-macos-v$VERSION.dmg`.
+
+All three workflows run for a pushed tag or from `workflow_dispatch`. Tag builds
+create or update the matching GitHub pre-release and upload their platform
+artifacts. Manual builds only upload GitHub Actions artifacts and append
+`_manual` to the workflow run name.
 
 ---
 

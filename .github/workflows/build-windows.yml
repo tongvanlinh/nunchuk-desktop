@@ -1,13 +1,338 @@
-name: Build windows release
+name: Build Windows release
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('{0}_manual', inputs.version) || github.ref_name }}
 
 on:
+  push:
+    tags: [ "*" ]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Package version used for a manual build
+        required: false
+        default: 0.0.0
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    name: Build Windows x64 for Windows 1
+    name: Build Windows x64 with Qt 5.15.2
     runs-on: windows-2022
+    env:
+      BUILD_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version || '0.0.0' }}
+      QT_VERSION: '5.15.2'
+      QT_ARCH: win64_msvc2019_64
+      QT_DIR_NAME: msvc2019_64
+      CMAKE_WINDOWS_SHA256: f4b499f71cf44115a1d711d4867da3c6bd2f3f4d7121c213ace979757640385c
+      OPENSSL11_VERSION: '1.1.1w'
+      OPENSSL11_SHA256: cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8
+      VCPKG_TRIPLET: x64-windows-static-md
+      VC_REDIST: vc_redist.x64.exe
 
     steps:
-      - name: Check out repository
+      - name: Configure Git for private GitLab submodules
+        shell: pwsh
+        env:
+          GITLAB_PAT: ${{ secrets.GITLAB_PAT }}
+        run: |
+          git config --global `
+            url."https://oauth2:$env:GITLAB_PAT@gitlab.com/".insteadOf `
+            "https://gitlab.com/"
+
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate build version
+        shell: pwsh
+        run: |
+          if ($env:BUILD_VERSION -notmatch `
+              '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$') {
+            Write-Error "Invalid build version: $env:BUILD_VERSION"
+            exit 1
+          }
+
+      - name: Setup MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          vsversion: '2022'
+
+      - name: Verify MSVC x64 toolchain
+        shell: pwsh
+        run: |
+          Get-Command cl.exe, dumpbin.exe, nmake.exe -ErrorAction Stop |
+            Select-Object Name, Source
+          @'
+          #if !defined(_MSC_VER) || _MSC_VER < 1943
+          #error Visual Studio 2022 17.13 or newer is required
+          #endif
+          int main() { return 0; }
+          '@ | Set-Content toolchain-probe.cpp -Encoding ASCII
+          & cl.exe /nologo /c toolchain-probe.cpp /Fotoolchain-probe.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $headers = & dumpbin.exe /HEADERS toolchain-probe.obj 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $headers -notmatch '8664 machine \(x64\)') {
+            Write-Error "MSVC did not produce a valid x64 object"
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install CMake 3.31 and Python tools
+        shell: pwsh
+        run: |
+          $cmakeVersion = "3.31.0"
+          $cmakeArchive = "$env:RUNNER_TEMP\cmake.zip"
+          $cmakeRoot = "$env:RUNNER_TEMP\cmake"
+          Invoke-WebRequest `
+            -Uri "https://github.com/Kitware/CMake/releases/download/v$cmakeVersion/cmake-$cmakeVersion-windows-x86_64.zip" `
+            -OutFile $cmakeArchive
+          $cmakeHash = (Get-FileHash $cmakeArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($cmakeHash -cne $env:CMAKE_WINDOWS_SHA256) {
+            Write-Error "CMake checksum mismatch: $cmakeHash"
+            exit 1
+          }
+          Expand-Archive $cmakeArchive -DestinationPath $cmakeRoot -Force
+          "$cmakeRoot\cmake-$cmakeVersion-windows-x86_64\bin" |
+            Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          pip install "aqtinstall==3.3.0" "py7zr==1.1.0" "ninja==1.11.1.1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Qt 5.15.2
+        shell: pwsh
+        run: |
+          & aqt install-qt windows desktop "$env:QT_VERSION" "$env:QT_ARCH" `
+            --outputdir C:\qt `
+            --modules qtnetworkauth qtwebengine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $qtDir = "C:\qt\$env:QT_VERSION\$env:QT_DIR_NAME"
+          foreach ($path in @(
+            "$qtDir\bin\Qt5Core.dll",
+            "$qtDir\bin\Qt5NetworkAuth.dll",
+            "$qtDir\bin\Qt5WebEngineCore.dll",
+            "$qtDir\bin\windeployqt.exe",
+            "$qtDir\qml\QtGraphicalEffects\private\qtgraphicaleffectsprivate.dll"
+          )) {
+            if (!(Test-Path $path -PathType Leaf)) {
+              Write-Error "Required Qt runtime is missing: $path"
+              exit 1
+            }
+          }
+          "QT_DIR=$qtDir" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "$qtDir\bin" | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build OpenSSL 1.1 runtime for Qt
+        shell: pwsh
+        run: |
+          $archive = "$env:RUNNER_TEMP\openssl-$env:OPENSSL11_VERSION.tar.gz"
+          $sourceRoot = "$env:RUNNER_TEMP\openssl-$env:OPENSSL11_VERSION"
+          $installRoot = "C:\openssl-$env:OPENSSL11_VERSION"
+          $tag = "OpenSSL_" + $env:OPENSSL11_VERSION.Replace(".", "_")
+          Invoke-WebRequest `
+            -Uri "https://github.com/openssl/openssl/releases/download/$tag/openssl-$env:OPENSSL11_VERSION.tar.gz" `
+            -OutFile $archive
+          $actualHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -cne $env:OPENSSL11_SHA256) {
+            Write-Error "OpenSSL checksum mismatch: $actualHash"
+            exit 1
+          }
+          tar -xzf $archive -C $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Set-Location $sourceRoot
+          & perl.exe Configure VC-WIN64A no-tests shared no-asm `
+            "--prefix=$installRoot" `
+            "--openssldir=$installRoot\ssl"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & nmake.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & nmake.exe install_sw
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "OPENSSL11_BIN=$installRoot\bin" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg
+            vcpkg/installed
+          key: vcpkg-f523208-windows-qt5-v143-x64-static-md-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-f523208-windows-qt5-v143-x64-static-md-
+
+      - name: Set up vcpkg
+        shell: pwsh
+        run: |
+          if (!(Test-Path "vcpkg\.git")) {
+            if (Test-Path vcpkg) { Remove-Item vcpkg -Recurse -Force }
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          }
+          Set-Location vcpkg
+          git fetch --all --tags --force
+          git checkout --force f523208df4ae467436dc2d2eeab594fed240d552
+          .\bootstrap-vcpkg.bat
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $vcpkgRoot = (Resolve-Path .).Path
+          "VCPKG_ROOT=$vcpkgRoot" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install native dependencies
+        shell: pwsh
+        run: |
+          $packages = @(
+            "boost-algorithm",
+            "boost-asio",
+            "boost-bind",
+            "boost-format",
+            "boost-multi-index",
+            "boost-process",
+            "boost-signals2",
+            "boost-tokenizer",
+            "zeromq",
+            "libevent",
+            "openssl",
+            "berkeleydb",
+            "sqlite3"
+          ) | ForEach-Object { "${_}:$env:VCPKG_TRIPLET" }
+          & "$env:VCPKG_ROOT\vcpkg.exe" install @packages
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $eventLibraryPath = `
+            "$env:VCPKG_ROOT\installed\$env:VCPKG_TRIPLET\lib\event.lib"
+          if (!(Test-Path $eventLibraryPath -PathType Leaf)) {
+            Write-Error "Static libevent is missing: $eventLibraryPath"
+            exit 1
+          }
+          $eventLibrary = (Resolve-Path $eventLibraryPath).Path.Replace('\', '/')
+          "EVENT_LIBRARY=$eventLibrary" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Olm
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 3.2.16 `
+            https://gitlab.matrix.org/matrix-org/olm.git `
+            "$env:RUNNER_TEMP\olm"
+          cmake -S "$env:RUNNER_TEMP\olm" -B "$env:RUNNER_TEMP\olm-build" `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            '-DCMAKE_C_FLAGS_RELEASE=/O2 /DNDEBUG' `
+            '-DCMAKE_CXX_FLAGS_RELEASE=/O2 /DNDEBUG' `
+            -DCMAKE_INSTALL_PREFIX=C:/olmInstalled `
+            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DOLM_TESTS=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build "$env:RUNNER_TEMP\olm-build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install "$env:RUNNER_TEMP\olm-build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build QtKeychain
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 0.15.0 `
+            https://github.com/frankosterfeld/qtkeychain.git `
+            "$env:RUNNER_TEMP\qtkeychain"
+          cmake -S "$env:RUNNER_TEMP\qtkeychain" `
+            -B "$env:RUNNER_TEMP\qtkeychain-build" `
+            -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            '-DCMAKE_C_FLAGS_RELEASE=/O2 /DNDEBUG' `
+            '-DCMAKE_CXX_FLAGS_RELEASE=/O2 /DNDEBUG' `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=$env:VCPKG_TRIPLET `
+            -DCMAKE_INSTALL_PREFIX=C:/qtkeychainInstalled `
+            -DCMAKE_PREFIX_PATH=$env:QT_DIR `
+            -DQt5_DIR="$env:QT_DIR\lib\cmake\Qt5" `
+            -DCMAKE_POLICY_DEFAULT_CMP0091=NEW `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
+            -DBUILD_WITH_QT5=ON `
+            -DBUILD_WITH_QT6=OFF `
+            -DBUILD_TEST_APPLICATION=OFF `
+            -DBUILD_TRANSLATIONS=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build "$env:RUNNER_TEMP\qtkeychain-build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --install "$env:RUNNER_TEMP\qtkeychain-build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "QTKEYCHAIN_PATH=C:/qtkeychainInstalled" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) |
+            Where-Object { $_ -and (Test-Path $_) }
+          $iscc = $roots | ForEach-Object {
+            Get-ChildItem "$_\Inno Setup *\ISCC.exe" -File `
+              -ErrorAction SilentlyContinue
+          } | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $iscc) {
+            Write-Error "ISCC.exe was not found"
+            exit 1
+          }
+          "ISCC=$($iscc.FullName)" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build, deploy and verify Windows packages
+        shell: pwsh
+        timeout-minutes: 120
+        run: ./reproducible-builds/build_windows.ps1
+
+      - name: Upload installer smoke log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nunchuk-windows-installer-smoke-log
+          path: ${{ runner.temp }}/nunchuk-installer-smoke.log
+          if-no-files-found: ignore
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nunchuk-windows-v${{ env.BUILD_VERSION }}
+          path: |
+            dist/nunchuk-windows-v${{ env.BUILD_VERSION }}-setup-unsigned.exe
+            dist/nunchuk-windows-portable-v${{ env.BUILD_VERSION }}.zip
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Create or update GitHub prerelease
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gh release view "${BUILD_VERSION}" >/dev/null 2>&1; then
+              break
+            fi
+            gh release create "${BUILD_VERSION}" \
+              --verify-tag \
+              --title "${BUILD_VERSION}" \
+              --notes-file reproducible-builds/release-notes.md \
+              --prerelease \
+              --latest=false || true
+            sleep 5
+          done
+          gh release view "${BUILD_VERSION}" >/dev/null
+          gh release edit "${BUILD_VERSION}" \
+            --title "${BUILD_VERSION}" \
+            --notes-file reproducible-builds/release-notes.md \
+            --draft=false \
+            --prerelease
+          gh release upload "${BUILD_VERSION}" \
+            "dist/nunchuk-windows-v${BUILD_VERSION}-setup-unsigned.exe" \
+            "dist/nunchuk-windows-portable-v${BUILD_VERSION}.zip" \
+            --clobber

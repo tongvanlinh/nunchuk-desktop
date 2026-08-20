@@ -130,20 +130,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           release_archive="nunchuk-linux-v${BUILD_VERSION}/nunchuk-linux-v${BUILD_VERSION}.zip"
 
-          if gh release view "${BUILD_VERSION}" >/dev/null 2>&1; then
-            gh release edit "${BUILD_VERSION}" \
-              --title "${BUILD_VERSION}" \
-              --notes-file reproducible-builds/release-notes.md \
-              --draft=false \
-              --prerelease
-            gh release upload "${BUILD_VERSION}" "${release_archive}" --clobber
-          else
-            gh release create "${BUILD_VERSION}" "${release_archive}" \
+          for attempt in 1 2 3; do
+            if gh release view "${BUILD_VERSION}" >/dev/null 2>&1; then
+              break
+            fi
+            gh release create "${BUILD_VERSION}" \
               --verify-tag \
               --title "${BUILD_VERSION}" \
               --notes-file reproducible-builds/release-notes.md \
               --prerelease \
-              --latest=false
-          fi
+              --latest=false || true
+            sleep 5
+          done
+          gh release view "${BUILD_VERSION}" >/dev/null
+          gh release edit "${BUILD_VERSION}" \
+            --title "${BUILD_VERSION}" \
+            --notes-file reproducible-builds/release-notes.md \
+            --draft=false \
+            --prerelease
+          gh release upload "${BUILD_VERSION}" "${release_archive}" --clobber
